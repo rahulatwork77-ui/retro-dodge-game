@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cyber Dodge 2077</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; }
+    body {
+      background: #090d16;
+      color: #00f0ff;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      overflow: hidden;
+    }
+    h1 {
+      font-size: 2.2rem;
+      letter-spacing: 3px;
+      text-shadow: 0 0 10px #00f0ff, 0 0 25px rgba(0, 240, 255, 0.6);
+      margin-bottom: 8px;
+    }
+    #hud {
+      display: flex;
+      justify-content: space-between;
+      width: 460px;
+      margin-bottom: 10px;
+      font-weight: 700;
+      font-size: 1.1rem;
+      letter-spacing: 1px;
+    }
+    #gameBox {
+      position: relative;
+      border: 3px solid #00f0ff;
+      border-radius: 10px;
+      box-shadow: 0 0 30px rgba(0, 240, 255, 0.35);
+      background: #02040a;
+      overflow: hidden;
+    }
+    canvas {
+      display: block;
+      background: radial-gradient(circle at 50% 50%, #0d1627 0%, #030611 100%);
+    }
+    #modal {
+      position: absolute;
+      inset: 0;
+      background: rgba(3, 6, 17, 0.88);
+      backdrop-filter: blur(4px);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+    }
+    #modalTitle {
+      font-size: 2rem;
+      text-shadow: 0 0 12px #ff0055;
+      color: #ff0055;
+      letter-spacing: 2px;
+    }
+    #modalSub {
+      color: #8fa0be;
+      font-size: 1rem;
+    }
+    button.btn {
+      margin-top: 10px;
+      padding: 12px 30px;
+      font-size: 1.1rem;
+      font-weight: bold;
+      color: #010409;
+      background: #00f0ff;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      box-shadow: 0 0 20px rgba(0, 240, 255, 0.7);
+      transition: all 0.2s;
+    }
+    button.btn:hover {
+      background: #70f7ff;
+      transform: scale(1.05);
+    }
+    #hint {
+      margin-top: 12px;
+      color: #556987;
+      font-size: 0.88rem;
+    }
+  </style>
+</head>
+<body>
+  <h1>CYBER DODGE</h1>
+  <div id="hud">
+    <div>SCORE: <span id="scoreVal" style="color:#39ff14;">0</span></div>
+    <div>BEST: <span id="bestVal" style="color:#ffb703;">0</span></div>
+  </div>
+  <div id="gameBox">
+    <canvas id="cvs" width="460" height="520"></canvas>
+    <div id="modal">
+      <h2 id="modalTitle" style="color:#00f0ff; text-shadow: 0 0 12px #00f0ff;">NEON RUNNER</h2>
+      <p id="modalSub">Dodge Incoming Hyper-Plasma Orbs</p>
+      <button class="btn" id="startBtn">LAUNCH SHIP</button>
+    </div>
+  </div>
+  <div id="hint">Steer: ← / → or A / D or Drag with Mouse / Touch</div>
+
+  <script>
+    const cvs = document.getElementById('cvs');
+    const ctx = cvs.getContext('2d');
+    const scoreVal = document.getElementById('scoreVal');
+    const bestVal = document.getElementById('bestVal');
+    const modal = document.getElementById('modal');
+    const modalTitle = document.getElementById('modalTitle');
+    const modalSub = document.getElementById('modalSub');
+    const startBtn = document.getElementById('startBtn');
+
+    let score = 0;
+    let best = localStorage.getItem('cyber_dodge_best') || 0;
+    bestVal.textContent = best;
+    let active = false;
+    let animId = null;
+    let lastTime = 0;
+    let spawnTimer = 0;
+    let interval = 550;
+
+    const ship = { x: 215, y: 465, w: 30, h: 32, speed: 400 };
+    let meteors = [];
+    let sparks = [];
+    const keys = {};
+
+    window.addEventListener('keydown', e => {
+      keys[e.key] = true;
+      if (['ArrowLeft', 'ArrowRight', ' '].includes(e.key)) e.preventDefault();
+    });
+    window.addEventListener('keyup', e => { keys[e.key] = false; });
+
+    let dragging = false;
+    cvs.addEventListener('pointerdown', e => { dragging = true; dragShip(e); });
+    cvs.addEventListener('pointermove', e => { if (dragging) dragShip(e); });
+    window.addEventListener('pointerup', () => { dragging = false; });
+
+    function dragShip(e) {
+      const rect = cvs.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      ship.x = Math.max(0, Math.min(cvs.width - ship.w, x - ship.w / 2));
+    }
+
+    startBtn.addEventListener('click', () => {
+      score = 0;
+      scoreVal.textContent = '0';
+      meteors = [];
+      sparks = [];
+      interval = 550;
+      ship.x = cvs.width / 2 - ship.w / 2;
+      active = true;
+      modal.style.display = 'none';
+      lastTime = performance.now();
+      cancelAnimationFrame(animId);
+      animId = requestAnimationFrame(loop);
+    });
+
+    function fail() {
+      active = false;
+      cancelAnimationFrame(animId);
+      if (score > best) {
+        best = score;
+        localStorage.setItem('cyber_dodge_best', best);
+        bestVal.textContent = best;
+      }
+      modalTitle.textContent = 'SYSTEM PURGED';
+      modalTitle.style.color = '#ff0055';
+      modalTitle.style.textShadow = '0 0 15px #ff0055';
+      modalSub.textContent = 'Score: ' + score + ' | High Score: ' + best;
+      startBtn.textContent = 'RESPAWN';
+      modal.style.display = 'flex';
+    }
+
+    function boom(x, y, color) {
+      for (let i = 0; i < 20; i++) {
+        sparks.push({
+          x, y,
+          vx: (Math.random() - 0.5) * 280,
+          vy: (Math.random() - 0.5) * 280,
+          life: 1,
+          c: color || '#ff0055'
+        });
+      }
+    }
+
+    function loop(time) {
+      if (!active) return;
+      const dt = Math.min((time - lastTime) / 1000, 0.08);
+      lastTime = time;
+
+      if (keys['ArrowLeft'] || keys['a'] || keys['A']) ship.x -= ship.speed * dt;
+      if (keys['ArrowRight'] || keys['d'] || keys['D']) ship.x += ship.speed * dt;
+      ship.x = Math.max(0, Math.min(cvs.width - ship.w, ship.x));
+
+      spawnTimer += dt * 1000;
+      if (spawnTimer > interval) {
+        spawnTimer = 0;
+        const radius = Math.random() * 12 + 10;
+        meteors.push({
+          x: Math.random() * (cvs.width - radius * 2) + radius,
+          y: -radius,
+          r: radius,
+          speed: Math.random() * 140 + 200 + score * 3,
+          color: Math.random() > 0.3 ? '#ff0055' : '#ffb703'
+        });
+        if (interval > 190) interval -= 6;
+      }
+
+      for (let i = meteors.length - 1; i >= 0; i--) {
+        const m = meteors[i];
+        m.y += m.speed * dt;
+
+        // Collision Check (circle to box)
+        const closeX = Math.max(ship.x, Math.min(m.x, ship.x + ship.w));
+        const closeY = Math.max(ship.y, Math.min(m.y, ship.y + ship.h));
+        const distSq = (m.x - closeX)**2 + (m.y - closeY)**2;
+        if (distSq < m.r * m.r) {
+          boom(ship.x + ship.w / 2, ship.y + ship.h / 2, '#00f0ff');
+          boom(m.x, m.y, m.color);
+          fail();
+          return;
+        }
+
+        if (m.y - m.r > cvs.height) {
+          meteors.splice(i, 1);
+          score += 10;
+          scoreVal.textContent = score;
+        }
+      }
+
+      for (let i = sparks.length - 1; i >= 0; i--) {
+        const p = sparks[i];
+        p.x += p.vx * dt;
+        p.y += p.vy * dt;
+        p.life -= dt * 2.2;
+        if (p.life <= 0) sparks.splice(i, 1);
+      }
+
+      // Draw
+      ctx.clearRect(0, 0, cvs.width, cvs.height);
+
+      // Grid background
+      ctx.strokeStyle = 'rgba(0, 240, 255, 0.08)';
+      ctx.lineWidth = 1;
+      for (let x = 0; x < cvs.width; x += 32) {
+        ctx.beginPath();
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x, cvs.height);
+        ctx.stroke();
+      }
+
+      // Ship
+      ctx.shadowColor = '#00f0ff';
+      ctx.shadowBlur = 15;
+      ctx.fillStyle = '#00f0ff';
+      ctx.beginPath();
+      ctx.moveTo(ship.x + ship.w / 2, ship.y);
+      ctx.lineTo(ship.x + ship.w, ship.y + ship.h);
+      ctx.lineTo(ship.x + ship.w / 2, ship.y + ship.h - 8);
+      ctx.lineTo(ship.x, ship.y + ship.h);
+      ctx.closePath();
+      ctx.fill();
+
+      // Flame
+      ctx.shadowColor = '#ffb703';
+      ctx.shadowBlur = 10;
+      ctx.fillStyle = '#ffb703';
+      ctx.beginPath();
+      ctx.moveTo(ship.x + ship.w * 0.35, ship.y + ship.h - 6);
+      ctx.lineTo(ship.x + ship.w * 0.65, ship.y + ship.h - 6);
+      ctx.lineTo(ship.x + ship.w * 0.5, ship.y + ship.h + 10 + Math.random() * 8);
+      ctx.closePath();
+      ctx.fill();
+
+      // Meteors
+      for (const m of meteors) {
+        ctx.shadowColor = m.color;
+        ctx.shadowBlur = 14;
+        ctx.fillStyle = m.color;
+        ctx.beginPath();
+        ctx.arc(m.x, m.y, m.r, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      // Sparks
+      for (const s of sparks) {
+        ctx.shadowColor = s.c;
+        ctx.shadowBlur = 8;
+        ctx.fillStyle = s.c;
+        ctx.globalAlpha = Math.max(0, s.life);
+        ctx.fillRect(s.x, s.y, 3, 3);
+      }
+      ctx.globalAlpha = 1.0;
+      ctx.shadowBlur = 0;
+
+      animId = requestAnimationFrame(loop);
+    }
+  </script>
+</body>
+</html>
